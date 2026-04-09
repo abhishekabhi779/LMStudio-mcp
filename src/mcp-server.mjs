@@ -20,6 +20,7 @@ const REQUIRED_RESUME_KEYS = [
   "summary",
   "skills",
 ];
+const SERVER_VERSION = "1.1.0";
 
 function resolvePath(inputPath, fallbackRelativePath) {
   if (!inputPath || inputPath.trim() === "") {
@@ -85,9 +86,83 @@ function buildSchemaPrompt(userPromptText) {
   ].join("\n");
 }
 
+function normalizeWhitespace(text) {
+  return String(text || "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractFirst(text, regex) {
+  const match = text.match(regex);
+  return match?.[1] ? normalizeWhitespace(match[1]) : "";
+}
+
+function parseSkills(skillsText) {
+  const raw = normalizeWhitespace(skillsText);
+  if (!raw) {
+    return [];
+  }
+
+  return raw
+    .split(/,|;|\||\band\b/gi)
+    .map((item) => normalizeWhitespace(item).replace(/[.]+$/g, ""))
+    .filter(Boolean);
+}
+
+function buildResumeDataFromPrompt(promptText) {
+  const text = String(promptText || "");
+
+  const fullName =
+    extractFirst(text, /name\s*[:\-]\s*([^\n,]+)/i) ||
+    extractFirst(text, /for\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})/);
+
+  const roleTitle =
+    extractFirst(text, /role(?:\s*title)?\s*[:\-]\s*([^\n,.]+)/i) ||
+    extractFirst(text, /title\s*[:\-]\s*([^\n,.]+)/i);
+
+  const email = extractFirst(
+    text,
+    /([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/
+  );
+  const phone = extractFirst(
+    text,
+    /(\+?\d(?:[\d\s().\-]{7,}\d))/
+  );
+
+  const summary =
+    extractFirst(
+      text,
+      /summary\s*[:\-]\s*([\s\S]*?)(?:\bskills?\s*[:\-]|\bemail\s*[:\-]|\bphone\s*[:\-]|\brole(?:\s*title)?\s*[:\-]|$)/i
+    ) ||
+    normalizeWhitespace(text).slice(0, 300);
+
+  const skillsSection =
+    extractFirst(text, /skills?\s*[:\-]\s*([^\n]+)/i) ||
+    extractFirst(text, /skills?\s+include\s*([^\n]+)/i);
+  const parsedSkills = parseSkills(skillsSection);
+
+  return {
+    full_name: fullName || "Unknown Candidate",
+    role_title: roleTitle || "Professional",
+    email: email || "unknown@example.com",
+    phone: phone || "N/A",
+    summary: summary || "Profile summary was not provided.",
+    skills: parsedSkills.length > 0 ? parsedSkills : ["Communication", "Problem Solving"],
+  };
+}
+
+function isSamplingUnavailable(errorMessage) {
+  return (
+    errorMessage.includes("-32601") ||
+    errorMessage.includes("Method not found") ||
+    errorMessage.includes("does not support sampling") ||
+    errorMessage.includes("sampling/createMessage")
+  );
+}
+
 const server = new McpServer({
   name: "docx-template-mcp",
-  version: "1.0.0",
+  version: SERVER_VERSION,
 });
 
 server.registerTool(
@@ -100,7 +175,7 @@ server.registerTool(
   async () => {
     const health = {
       name: "docx-template-mcp",
-      version: "1.0.0",
+      version: SERVER_VERSION,
       status: "ok",
       timestamp: new Date().toISOString(),
       project_root: projectRoot,
@@ -236,31 +311,51 @@ server.registerTool(
   },
   async ({ prompt_text, template_path, output_path }) => {
     try {
-      const samplingResponse = await server.server.createMessage({
-        systemPrompt:
-          "You are a data formatter. Return strictly valid JSON only with the exact required schema.",
-        messages: [
-          {
-            role: "user",
-            content: {
-              type: "text",
-              text: buildSchemaPrompt(prompt_text),
-            },
-          },
-        ],
-        maxTokens: 1200,
-        temperature: 0.2,
-      });
-
-      if (samplingResponse.content?.type !== "text") {
-        throw new Error("Model response was not text; unable to extract JSON.");
-      }
-
-      const structuredData = extractJsonObject(samplingResponse.content.text);
-      validateData(structuredData);
-
       const templatePath = resolvePath(template_path, "templates/resume-template.docx");
       const outputPath = resolvePath(output_path, "output/resume-from-lm-prompt.docx");
+      let structuredData;
+      let generationMode = "sampling";
+      let samplingErrorText = "";
+
+      try {
+        const samplingResponse = await server.server.createMessage({
+          systemPrompt:
+            "You are a data formatter. Return strictly valid JSON only with the exact required schema.",
+          messages: [
+            {
+              role: "user",
+              content: {
+                type: "text",
+                text: buildSchemaPrompt(prompt_text),
+              },
+            },
+          ],
+          maxTokens: 1200,
+          temperature: 0.2,
+        });
+
+        if (samplingResponse.content?.type !== "text") {
+          throw new Error("Model response was not text; unable to extract JSON.");
+        }
+
+        structuredData = extractJsonObject(samplingResponse.content.text);
+      } catch (samplingError) {
+        const errorMessage = String(samplingError?.message || samplingError);
+        samplingErrorText = errorMessage;
+
+        // LM Studio can expose tools without supporting sampling/createMessage.
+        // In that case we degrade gracefully using deterministic local extraction.
+        if (isSamplingUnavailable(errorMessage)) {
+          generationMode = "fallback";
+          structuredData = buildResumeDataFromPrompt(prompt_text);
+        } else {
+          // For non-sampling failures, still attempt fallback to keep the workflow moving.
+          generationMode = "fallback";
+          structuredData = buildResumeDataFromPrompt(prompt_text);
+        }
+      }
+
+      validateData(structuredData);
 
       const result = renderDocxFromTemplateData({
         templatePath,
@@ -276,25 +371,31 @@ server.registerTool(
           },
           {
             type: "text",
+            text: `Generation mode: ${generationMode}`,
+          },
+          {
+            type: "text",
             text: `Structured JSON used: ${JSON.stringify(structuredData)}`,
           },
+          ...(samplingErrorText
+            ? [
+                {
+                  type: "text",
+                  text: `Sampling note: ${samplingErrorText}`,
+                },
+              ]
+            : []),
         ],
       };
     } catch (error) {
       const errorMessage = String(error?.message || error);
-      const maybeSamplingUnsupported =
-        errorMessage.includes("does not support sampling") ||
-        errorMessage.includes("sampling/createMessage");
-      const guidance = maybeSamplingUnsupported
-        ? " Client does not expose MCP sampling. In LM Studio, ensure this tool is invoked from a context where sampling is supported."
-        : "";
 
       return {
         isError: true,
         content: [
           {
             type: "text",
-            text: `Prompt-to-DOCX failed: ${errorMessage}.${guidance}`,
+            text: `Prompt-to-DOCX failed: ${errorMessage}`,
           },
         ],
       };

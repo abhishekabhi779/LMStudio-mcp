@@ -42,6 +42,10 @@ The server exposes:
 - `create_docx_from_lm_prompt`
 - `validate_resume_template_data`
 
+`create_docx_from_lm_prompt` behavior:
+- Preferred path: uses MCP sampling to convert prompt text to JSON.
+- Fallback path: if sampling is unavailable (for example `-32601 Method not found`), it uses a local parser and still generates DOCX.
+
 Example tool arguments (inline data):
 
 ```json
