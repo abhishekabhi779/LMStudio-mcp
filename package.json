@@ -1,0 +1,31 @@
+{
+  "name": "docx-node-project",
+  "version": "1.0.0",
+  "description": "Template-first DOCX generation with Node.js, MCP tools, and LM Studio integration.",
+  "main": "src/mcp-server.mjs",
+  "scripts": {
+    "mcp:debug-tools": "node scripts/debug-list-tools.mjs",
+    "mcp:server": "node src/mcp-server.mjs",
+    "template:create": "node src/create-template.js",
+    "generate:template": "node src/generate-from-template.js",
+    "template:smoke": "npm run template:create && npm run generate:template",
+    "generate:test-docx": "node scripts/generate-test-docx.js",
+    "test": "npm run template:smoke"
+  },
+  "keywords": [
+    "docx",
+    "nodejs",
+    "mcp",
+    "lm-studio",
+    "automation"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "docx": "^9.6.1",
+    "docxtemplater": "^3.68.3",
+    "pizzip": "^3.2.0",
+    "zod": "^4.3.6"
+  }
+}

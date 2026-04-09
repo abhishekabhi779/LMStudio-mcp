@@ -1,0 +1,8 @@
+node_modules/
+
+# Generated artifacts
+output/*.docx
+templates/*.docx
+
+# Logs
+npm-debug.log*

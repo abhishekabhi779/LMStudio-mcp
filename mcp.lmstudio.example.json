@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "docx-template-local": {
+      "command": "node",
+      "args": [
+        "C:/Users/abhis/OneDrive/Documents/Playground/docx-node-project/src/mcp-server.mjs"
+      ]
+    }
+  }
+}
