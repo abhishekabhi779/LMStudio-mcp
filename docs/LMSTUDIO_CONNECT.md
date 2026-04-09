@@ -45,6 +45,7 @@ The server exposes:
 `create_docx_from_lm_prompt` behavior:
 - Preferred path: uses MCP sampling to convert prompt text to JSON.
 - Fallback path: if sampling is unavailable (for example `-32601 Method not found`), it uses a local parser and still generates DOCX.
+- If `template_path` is not a valid `.docx` file path (for example `mcp/docx-template-local-v2`), the server ignores it and uses the default template.
 
 Example tool arguments (inline data):
 

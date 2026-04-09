@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import * as z from "zod/v4";
+import { Document, HeadingLevel, Packer, Paragraph } from "docx";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import renderer from "./template-renderer.js";
@@ -20,7 +21,8 @@ const REQUIRED_RESUME_KEYS = [
   "summary",
   "skills",
 ];
-const SERVER_VERSION = "1.1.0";
+const SERVER_VERSION = "1.1.1";
+const DEFAULT_TEMPLATE_RELATIVE_PATH = "templates/resume-template.docx";
 
 function resolvePath(inputPath, fallbackRelativePath) {
   if (!inputPath || inputPath.trim() === "") {
@@ -30,6 +32,62 @@ function resolvePath(inputPath, fallbackRelativePath) {
     return inputPath;
   }
   return path.resolve(projectRoot, inputPath);
+}
+
+function isValidDocxPath(inputPath) {
+  if (!inputPath || typeof inputPath !== "string") {
+    return false;
+  }
+  return inputPath.trim().toLowerCase().endsWith(".docx");
+}
+
+function resolveTemplatePath(inputPath) {
+  const defaultTemplatePath = resolvePath(undefined, DEFAULT_TEMPLATE_RELATIVE_PATH);
+  if (!isValidDocxPath(inputPath)) {
+    return defaultTemplatePath;
+  }
+  return resolvePath(inputPath, DEFAULT_TEMPLATE_RELATIVE_PATH);
+}
+
+async function ensureDefaultTemplateExists() {
+  const templatePath = resolvePath(undefined, DEFAULT_TEMPLATE_RELATIVE_PATH);
+  if (fs.existsSync(templatePath)) {
+    return templatePath;
+  }
+
+  const templateDir = path.dirname(templatePath);
+  if (!fs.existsSync(templateDir)) {
+    fs.mkdirSync(templateDir, { recursive: true });
+  }
+
+  const doc = new Document({
+    sections: [
+      {
+        children: [
+          new Paragraph({
+            text: "Candidate Profile",
+            heading: HeadingLevel.HEADING_1,
+          }),
+          new Paragraph("Name: {full_name}"),
+          new Paragraph("Role: {role_title}"),
+          new Paragraph("Email: {email}"),
+          new Paragraph("Phone: {phone}"),
+          new Paragraph(""),
+          new Paragraph("Summary"),
+          new Paragraph("{summary}"),
+          new Paragraph(""),
+          new Paragraph("Skills"),
+          new Paragraph("{#skills}"),
+          new Paragraph("- {.}"),
+          new Paragraph("{/skills}"),
+        ],
+      },
+    ],
+  });
+
+  const buffer = await Packer.toBuffer(doc);
+  fs.writeFileSync(templatePath, buffer);
+  return templatePath;
 }
 
 function tryParseJson(text) {
@@ -248,7 +306,8 @@ server.registerTool(
         };
       }
 
-      const templatePath = resolvePath(template_path, "templates/resume-template.docx");
+      await ensureDefaultTemplateExists();
+      const templatePath = resolveTemplatePath(template_path);
       const outputPath = resolvePath(output_path, "output/resume-output.docx");
 
       let result;
@@ -311,7 +370,8 @@ server.registerTool(
   },
   async ({ prompt_text, template_path, output_path }) => {
     try {
-      const templatePath = resolvePath(template_path, "templates/resume-template.docx");
+      await ensureDefaultTemplateExists();
+      const templatePath = resolveTemplatePath(template_path);
       const outputPath = resolvePath(output_path, "output/resume-from-lm-prompt.docx");
       let structuredData;
       let generationMode = "sampling";
