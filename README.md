@@ -132,7 +132,7 @@ npm run mcp:debug-tools
 
 For the LM Studio setup itself, check [docs/LMSTUDIO_CONNECT.md](docs/LMSTUDIO_CONNECT.md).
 
-## What I Want This Repo To Become
+## What I Want This Repo To Become(  GEMMA E4B// QWEN 3.5 - CLAUDE DISTILLED )
 
 I want this repo to grow into a collection of small, practical LM Studio tools that solve real local-model problems.
 
@@ -146,15 +146,3 @@ Examples:
 So even though the first example is DOCX generation, the real topic of this repo is:
 
 **how to build LM Studio tools that make local models behave better**
-
-## If You Want To Reuse This Pattern
-
-The reusable recipe is:
-
-1. Keep the model focused on intent, not execution.
-2. Put validation in the tool, not in the prompt.
-3. Prefer structured input over free-form output.
-4. Add a fallback path for common LM Studio / MCP failures.
-5. Return something concrete: a file, a JSON object, a decision, a result.
-
-That is the pattern I will keep using in this repo.
