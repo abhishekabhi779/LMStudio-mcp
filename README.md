@@ -1,33 +1,87 @@
-# DOCX Template MCP (Weekend Build)
+# Building LM Studio Tools That Actually Work
 
-Build reliable `.docx` files from local AI output without executing unsafe AI-generated code.
+This repo is my playground for building MCP tools for LM Studio so local models can give more reliable, usable output.
 
-## Problem
-Local models are great at writing content, but unreliable at writing executable code that always runs cleanly.  
-When you ask a model to generate code and compile it on the fly, failures are common:
+The idea is simple: local models are good at generating text, but they are not always good at producing clean, executable output on their own. So instead of trusting the model to do everything, I give it a tool with guardrails. The model handles the intent, and the tool handles the real work.
 
-- runtime errors
+Right now, the main example in this repo is a DOCX generation tool. But the bigger point of the repo is not "how to make a Word file." It is "how to build LM Studio tools that turn messy model output into something dependable."
+
+## What This Repo Is
+
+This repo shows a pattern I like using with LM Studio:
+
+1. Give the model a narrow, useful tool.
+2. Validate the input before doing anything important.
+3. Add fallback behavior when the model or MCP flow is flaky.
+4. Return deterministic output instead of hoping the model improvises correctly.
+
+That pattern is reusable for way more than documents:
+
+- job search helpers
+- resume tailoring
+- local automation
+- structured content generation
+- file transforms
+- internal workflow tools
+
+## What Is In Here Right Now
+
+The current working example is a template-first DOCX tool built with:
+
+- `Node.js`
+- `@modelcontextprotocol/sdk`
+- `docxtemplater`
+- `pizzip`
+- `LM Studio`
+
+The tool flow looks like this:
+
+1. LM Studio calls an MCP tool.
+2. The tool receives either prompt text or structured JSON.
+3. The server validates and reshapes the data.
+4. A DOCX template gets filled.
+5. A file is saved locally.
+
+## Why I Built It This Way
+
+I did not want the local model to generate random JavaScript and hope it runs.
+
+That breaks too often:
+
+- bad syntax
 - missing imports
-- invalid syntax
-- inconsistent output structure
+- wrong file paths
+- unpredictable structure
+- tool calls that half-work and then fail
 
-## Solution
-This project uses a **template-first pipeline**:
+So the fix was to stop treating the model like a compiler.
 
-1. Model generates structured data (JSON), not runnable code.
-2. Node.js validates that data.
-3. A `.docx` template is filled with the validated data.
-4. Result is written to disk as a deterministic output file.
+Instead:
 
-This gives you repeatable output and clear failure points.
+- the model suggests content
+- the MCP tool enforces structure
+- Node does the execution
+- the output becomes predictable
 
-## What You Get
-- Local Node.js DOCX generation
-- MCP server tools for LM Studio
-- Health check tool to verify live MCP connectivity
-- Prompt-to-DOCX one-call flow (`create_docx_from_lm_prompt`)
+That one shift makes local models much more useful.
+
+## MCP Tools In This Repo
+
+The current server exposes these tools:
+
+- `ping_docx_server`
+- `create_docx_from_template`
+- `create_docx_from_lm_prompt`
+- `validate_resume_template_data`
+
+`ping_docx_server` is there because this stuff gets annoying fast when LM Studio is using a stale MCP process. A simple health check saves time.
+
+`create_docx_from_lm_prompt` is the fun one. It tries to use MCP sampling first, but if LM Studio does not support that path cleanly, it falls back to a local parser so the workflow still finishes.
+
+That fallback behavior is a big part of the point of this repo: tools should still be useful when the model environment is imperfect.
 
 ## Project Structure
+
 ```text
 docx-node-project/
   data/
@@ -37,7 +91,6 @@ docx-node-project/
     LMSTUDIO_MCP_TEMPLATE_PLAN.md
     PROJECT_PLAN.md
   output/
-    .gitkeep
   scripts/
     debug-list-tools.mjs
     generate-test-docx.js
@@ -47,65 +100,61 @@ docx-node-project/
     mcp-server.mjs
     template-renderer.js
   templates/
-    .gitkeep
   mcp.lmstudio.example.json
   package.json
 ```
 
-## Quick Start
-1. Install dependencies:
+## How To Run It
+
+Install dependencies:
+
 ```bash
 npm install
 ```
 
-2. Create template + generate sample output:
+Create the sample template and output:
+
 ```bash
 npm run template:smoke
 ```
 
-3. Start MCP server:
+Start the MCP server:
+
 ```bash
 npm run mcp:server
 ```
 
-4. Verify tool registration:
+Verify that LM Studio can see the tools:
+
 ```bash
 npm run mcp:debug-tools
 ```
 
-## MCP Tools
-1. `ping_docx_server`  
-Use first. Confirms server version, status, and active tools.
+For the LM Studio setup itself, check [docs/LMSTUDIO_CONNECT.md](docs/LMSTUDIO_CONNECT.md).
 
-2. `create_docx_from_template`  
-Generate DOCX from either inline JSON or a JSON file.
+## What I Want This Repo To Become
 
-3. `create_docx_from_lm_prompt`  
-Takes plain-English prompt, uses MCP sampling to produce schema-valid JSON, then generates DOCX.
+I want this repo to grow into a collection of small, practical LM Studio tools that solve real local-model problems.
 
-4. `validate_resume_template_data`  
-Validates JSON before generation.
+Examples:
 
-## LM Studio Integration
-Use [docs/LMSTUDIO_CONNECT.md](docs/LMSTUDIO_CONNECT.md) for full setup.
+- turn prompts into validated structured output
+- wrap brittle model behavior with safer automation
+- build tools that can recover when MCP sampling fails
+- make local models useful for actual workflows, not just demos
 
-Use this order in LM Studio:
-1. Call `ping_docx_server`
-2. Call `create_docx_from_lm_prompt`
+So even though the first example is DOCX generation, the real topic of this repo is:
 
-If you get `MCP error -32601 Method not found`, you are usually hitting a stale MCP process or old server id.  
-Fix by restarting LM Studio and cache-busting the server id (`docx-template-local-v2`, etc.).
+**how to build LM Studio tools that make local models behave better**
 
-## Why This Design Works
-- No dynamic execution of AI-written JavaScript
-- Controlled schema = predictable document structure
-- Easy to debug:
-  - prompt issue -> bad JSON
-  - schema issue -> validation failure
-  - template issue -> render failure
+## If You Want To Reuse This Pattern
 
-## Next Improvements
-1. Add cover-letter template and tools
-2. Add schema versioning (`resume_v1`, `resume_v2`)
-3. Add tests for all tool pathways
-4. Add CI checks for docs and scripts
+The reusable recipe is:
+
+1. Keep the model focused on intent, not execution.
+2. Put validation in the tool, not in the prompt.
+3. Prefer structured input over free-form output.
+4. Add a fallback path for common LM Studio / MCP failures.
+5. Return something concrete: a file, a JSON object, a decision, a result.
+
+That is the pattern I will keep using in this repo.

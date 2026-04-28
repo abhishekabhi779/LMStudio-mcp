@@ -1,7 +1,7 @@
 {
   "name": "docx-node-project",
   "version": "1.0.0",
-  "description": "Template-first DOCX generation with Node.js, MCP tools, and LM Studio integration.",
+  "description": "Patterns and examples for building reliable MCP tools for LM Studio and local models.",
   "main": "src/mcp-server.mjs",
   "scripts": {
     "mcp:debug-tools": "node scripts/debug-list-tools.mjs",
@@ -13,11 +13,12 @@
     "test": "npm run template:smoke"
   },
   "keywords": [
-    "docx",
-    "nodejs",
-    "mcp",
     "lm-studio",
-    "automation"
+    "mcp",
+    "local-models",
+    "automation",
+    "nodejs",
+    "docx"
   ],
   "author": "",
   "license": "ISC",
