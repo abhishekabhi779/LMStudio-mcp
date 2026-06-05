@@ -1,148 +1,153 @@
-# Building LM Studio Tools That Actually Work
+# Universal MCP Tools for Local Models
 
-This repo is my playground for building MCP tools for LM Studio so local models can give more reliable, usable output.
+This repo builds **MCP tools for LM Studio / local models** so they get frontier-like capabilities: file operations, shell commands, web fetch, code execution, git, and document generation — all sandboxed and validated.
 
-The idea is simple: local models are good at generating text, but they are not always good at producing clean, executable output on their own. So instead of trusting the model to do everything, I give it a tool with guardrails. The model handles the intent, and the tool handles the real work.
+The idea is simple: local models are good at reasoning, but bad at execution. Instead of trusting the model to do everything, give it focused tools with guardrails. The model handles **intent**, the tool handles **deterministic execution**.
 
-Right now, the main example in this repo is a DOCX generation tool. But the bigger point of the repo is not "how to make a Word file." It is "how to build LM Studio tools that turn messy model output into something dependable."
+---
 
 ## What This Repo Is
 
-This repo shows a pattern I like using with LM Studio:
+A growing collection of practical MCP tools that turn messy model output into dependable results:
 
-1. Give the model a narrow, useful tool.
-2. Validate the input before doing anything important.
-3. Add fallback behavior when the model or MCP flow is flaky.
-4. Return deterministic output instead of hoping the model improvises correctly.
+1. **Give the model a narrow, useful tool**
+2. **Validate input before doing anything important**
+3. **Add fallback behavior when the model or MCP flow is flaky**
+4. **Return structured output instead of hoping the model improvises correctly**
 
-That pattern is reusable for way more than documents:
+This pattern applies to way more than documents:
+- Lead sourcing & business intelligence pipelines
+- CRM integration & automation
+- Local file transforms & data processing
+- Structured content generation
+- Internal workflow tools
 
-- job search helpers
-- resume tailoring
-- local automation
-- structured content generation
-- file transforms
-- internal workflow tools
+---
 
-## What Is In Here Right Now
+## The Universal Tool Server (`mcp-server-improved.mjs`)
 
-The current working example is a template-first DOCX tool built with:
+**9 tools** giving local models (Qwen3.5-9B, Gemma, etc.) frontier-like capabilities:
 
-- `Node.js`
-- `@modelcontextprotocol/sdk`
-- `docxtemplater`
-- `pizzip`
-- `LM Studio`
+| Tool | Description |
+|------|-------------|
+| `read_file` | Read any file in sandbox |
+| `write_file` | Create/edit files in sandbox |
+| `list_files` | Browse directory structure |
+| `delete_file` | Clean up files |
+| `shell` | Run allowlisted commands (ls, git, npm, python, curl, jq, etc.) |
+| `web_fetch` | HTTP GET/POST to any URL |
+| `code_exec` | Execute Python / JavaScript / TypeScript in isolated env |
+| `git` | Full git operations (status, diff, log, add, commit, push, pull, branch, checkout) |
+| `generate_docx` | Template-first DOCX generation (your existing resume tool, preserved) |
 
-The tool flow looks like this:
+**Safety built-in:**
+- Sandboxed execution (all ops under `sandbox/`)
+- Path traversal protection
+- Command allowlist
+- Timeouts (30s default)
+- Output truncation (50KB)
 
-1. LM Studio calls an MCP tool.
-2. The tool receives either prompt text or structured JSON.
-3. The server validates and reshapes the data.
-4. A DOCX template gets filled.
-5. A file is saved locally.
+---
 
-## Why I Built It This Way
-
-I did not want the local model to generate random JavaScript and hope it runs.
-
-That breaks too often:
-
-- bad syntax
-- missing imports
-- wrong file paths
-- unpredictable structure
-- tool calls that half-work and then fail
-
-So the fix was to stop treating the model like a compiler.
-
-Instead:
-
-- the model suggests content
-- the MCP tool enforces structure
-- Node does the execution
-- the output becomes predictable
-
-That one shift makes local models much more useful.
-
-## MCP Tools In This Repo
-
-The current server exposes these tools:
-
-- `ping_docx_server`
-- `create_docx_from_template`
-- `create_docx_from_lm_prompt`
-- `validate_resume_template_data`
-
-`ping_docx_server` is there because this stuff gets annoying fast when LM Studio is using a stale MCP process. A simple health check saves time.
-
-`create_docx_from_lm_prompt` is the fun one. It tries to use MCP sampling first, but if LM Studio does not support that path cleanly, it falls back to a local parser so the workflow still finishes.
-
-That fallback behavior is a big part of the point of this repo: tools should still be useful when the model environment is imperfect.
-
-## Project Structure
-
-```text
-docx-node-project/
-  data/
-    resume-data.example.json
-  docs/
-    LMSTUDIO_CONNECT.md
-    LMSTUDIO_MCP_TEMPLATE_PLAN.md
-    PROJECT_PLAN.md
-  output/
-  scripts/
-    debug-list-tools.mjs
-    generate-test-docx.js
-  src/
-    create-template.js
-    generate-from-template.js
-    mcp-server.mjs
-    template-renderer.js
-  templates/
-  mcp.lmstudio.example.json
-  package.json
-```
-
-## How To Run It
-
-Install dependencies:
+## Quick Start
 
 ```bash
 npm install
-```
-
-Create the sample template and output:
-
-```bash
-npm run template:smoke
-```
-
-Start the MCP server:
-
-```bash
 npm run mcp:server
+node scripts/debug-improved.mjs
+node scripts/test-tools.mjs
 ```
 
-Verify that LM Studio can see the tools:
+### LM Studio Setup
+
+```json
+{
+  "mcpServers": {
+    "universal-local-tools": {
+      "command": "node",
+      "args": ["src/mcp-server-improved.mjs"]
+    }
+  }
+}
+```
+
+See [`docs/LMSTUDIO_CONNECT.md`](docs/LMSTUDIO_CONNECT.md) for full LM Studio integration guide.
+
+---
+
+## Example Workflows
+
+### "Research a company, create a profile, save to git"
+
+1. Model calls `web_fetch` → gets company page
+2. Model calls `code_exec` (Python) → extracts key info, structures as JSON
+3. Model calls `write_file` → saves profile to `sandbox/files/company-profile.json`
+4. Model calls `git` → commits to `sandbox/git/profiles`
+
+### "Build a lead scraper and run it"
+
+1. Model calls `write_file` → saves Python scraper to `sandbox/files/leads/scraper.py`
+2. Model calls `code_exec` → runs scraper, outputs CSV to `sandbox/files/leads/results.csv`
+3. Model calls `read_file` → verifies output
+4. Model calls `shell` → `ls -la` to confirm
+
+### "Generate resume, push to GitHub"
+
+1. Model calls `generate_docx` → creates `sandbox/output/resume.docx`
+2. Model calls `git` → adds, commits, pushes
+
+---
+
+## Why This Approach Works
+
+I didn't want the local model to generate random JavaScript and hope it runs.
+
+**That breaks:**
+- Bad syntax / missing imports
+- Wrong file paths
+- Unpredictable structure
+- Tool calls that half-work and then fail
+
+**The fix: stop treating the model like a compiler.**
+- Model → suggests content + intent
+- MCP tool → validates, enforces structure, executes deterministically
+- Output → predictable, safe, usable
+
+---
+
+## What's Next (Planned Tools)
+
+- **Firecrawl web search** — Structured search + extract
+- **Salesforce REST API** — CRM read/write for automation
+- **Tableau API** — Dashboard publishing / data source refresh
+- **n8n workflow trigger** — Orchestrate multi-step automations
+- **Vector DB (pgvector/FAISS)** — Semantic search for RAG
+- **LLM evaluation harness** — RAGAS/TruLens-style pipelines
+
+---
+
+## Legacy: Original Resume-Only Server
+
+The original `mcp-server.mjs` with 4 DOCX-specific tools is preserved in `src/mcp-server.mjs` and still works via:
 
 ```bash
+node src/mcp-server.mjs
 npm run mcp:debug-tools
 ```
 
-For the LM Studio setup itself, check [docs/LMSTUDIO_CONNECT.md](docs/LMSTUDIO_CONNECT.md).
+See [`MIGRATION_GUIDE.md`](MIGRATION_GUIDE.md) for upgrade details.
 
-## What I Want This Repo To Become(  GEMMA E4B// QWEN 3.5 - CLAUDE DISTILLED )
+---
 
-I want this repo to grow into a collection of small, practical LM Studio tools that solve real local-model problems.
+## Target Models
 
-Examples:
+- **Qwen 3.5** (9B, 14B, 32B)
+- **Gemma E4B / 2B / 7B / 9B**
+- **Claude Distilled** (Qwen/Claude distills)
+- Any model supporting MCP via LM Studio / Ollama
 
-- turn prompts into validated structured output
-- wrap brittle model behavior with safer automation
-- build tools that can recover when MCP sampling fails
-- make local models useful for actual workflows, not just demos
+---
 
-So even though the first example is DOCX generation, the real topic of this repo is:
+## License
 
-**how to build LM Studio tools that make local models behave better**
+ISC — Use freely, improve wildly.
